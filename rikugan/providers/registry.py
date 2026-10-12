@@ -81,7 +81,12 @@ class ProviderRegistry:
         model: str = "",
         **kwargs: Any,
     ) -> LLMProvider:
-        """Create a new provider instance."""
+        """Create a new provider instance.
+
+        A false ``ssl_verify`` keyword makes the provider skip TLS certificate
+        checks, for internal endpoints without a publicly trusted certificate.
+        """
+        ssl_verify = bool(kwargs.pop("ssl_verify", True))
         cls = self._resolve_provider_class(name)
 
         # Custom OpenAI-compatible providers need their name passed through.
@@ -93,6 +98,7 @@ class ProviderRegistry:
             kwargs.setdefault("provider_name", name)
 
         instance = cls(api_key=api_key, api_base=api_base, model=model, **kwargs)
+        instance.ssl_verify = ssl_verify
         self._instances[name] = instance
         return instance
 
@@ -106,18 +112,23 @@ class ProviderRegistry:
     ) -> LLMProvider:
         """Get existing instance or create new one.
 
-        Recreates the instance if api_key or api_base changed.
+        Recreates the instance if api_key, api_base or ssl_verify changed: the
+        SDK client bakes in its transport when first built.
         """
+        ssl_verify = bool(kwargs.pop("ssl_verify", True))
         if name in self._instances:
             inst = self._instances[name]
             key_changed = api_key != inst.api_key
             base_changed = api_base != (inst.api_base or "")
-            if key_changed or base_changed or (kwargs and name not in _BUILTIN_PROVIDERS):
-                return self.create(name, api_key=api_key, api_base=api_base, model=model, **kwargs)
+            tls_changed = ssl_verify != getattr(inst, "ssl_verify", True)
+            if key_changed or base_changed or tls_changed or (kwargs and name not in _BUILTIN_PROVIDERS):
+                return self.create(
+                    name, api_key=api_key, api_base=api_base, model=model, ssl_verify=ssl_verify, **kwargs
+                )
             if model and inst.model != model:
                 inst.model = model
             return inst
-        return self.create(name, api_key=api_key, api_base=api_base, model=model, **kwargs)
+        return self.create(name, api_key=api_key, api_base=api_base, model=model, ssl_verify=ssl_verify, **kwargs)
 
     def get_instance(self, name: str) -> LLMProvider | None:
         return self._instances.get(name)

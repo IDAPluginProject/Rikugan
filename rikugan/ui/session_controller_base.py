@@ -288,6 +288,7 @@ class SessionControllerBase:
                 api_key=self.config.provider.api_key,
                 api_base=self.config.provider.api_base,
                 model=self.config.provider.model,
+                ssl_verify=self.config.provider.ssl_verify,
                 **(self.config.provider.extra or {}),
             )
             provider.ensure_ready()
@@ -304,6 +305,7 @@ class SessionControllerBase:
                 api_key=self.config.provider.api_key,
                 api_base=self.config.provider.api_base,
                 model=self.config.provider.model,
+                ssl_verify=self.config.provider.ssl_verify,
                 **(self.config.provider.extra or {}),
             )
             return provider.context_window()
@@ -332,6 +334,7 @@ class SessionControllerBase:
                 api_key=self.config.provider.api_key,
                 api_base=self.config.provider.api_base,
                 model=self.config.provider.model,
+                ssl_verify=self.config.provider.ssl_verify,
                 **(self.config.provider.extra or {}),
             )
             provider.ensure_ready()

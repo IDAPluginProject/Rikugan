@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import importlib
+import ssl
 import threading
 from abc import ABC, abstractmethod
 from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any, NoReturn
 
-from ..core.logging import log_debug
+from ..core.logging import log_debug, log_warning
 from ..core.types import (
     Message,
     ModelInfo,
@@ -39,6 +41,8 @@ class LLMProvider(ABC):
         self.api_key = api_key
         self.api_base = api_base
         self.model = model
+        # Set by ProviderRegistry from the provider's own settings.
+        self.ssl_verify = True
         self._client: Any = None
         self._active_request_handles: list[Any] = []
         self._request_lock = threading.RLock()
@@ -163,6 +167,34 @@ class LLMProvider(ABC):
         except Exception as exc:
             log_debug(f"{self.name} list_models failed, using builtins: {exc}")
             return self._builtin_models()
+
+    # -- TLS ------------------------------------------------------------------
+
+    def _unverified_http_client(self, sdk: Any) -> Any | None:
+        """An httpx client that skips certificate checks, or None to use the SDK default.
+
+        Only for endpoints the user marked as having an untrusted certificate
+        (self-signed, internal CA). ``sdk`` is the imported SDK module; its
+        ``DefaultHttpxClient`` keeps the SDK's own timeouts and limits.
+        """
+        if self.ssl_verify:
+            return None
+        log_warning(
+            f"{self.name}: TLS certificate verification is disabled for {self.api_base or 'the default endpoint'}"
+        )
+        factory = getattr(sdk, "DefaultHttpxClient", None)
+        if factory is None:
+            factory = importlib.import_module("httpx").Client
+        return factory(verify=self.ssl_verify)
+
+    def _urlopen_ssl_context(self) -> ssl.SSLContext | None:
+        """SSL context for ``urllib`` requests: None (verify) unless disabled."""
+        if self.ssl_verify:
+            return None
+        context = ssl.create_default_context()
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+        return context
 
     def ensure_ready(self) -> None:
         """Pre-initialize the provider (imports, client objects, etc.).

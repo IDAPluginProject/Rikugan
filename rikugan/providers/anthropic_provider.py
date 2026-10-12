@@ -179,6 +179,9 @@ class AnthropicProvider(LLMProvider):
             if self.api_base:
                 kwargs["base_url"] = self.api_base
             kwargs["timeout"] = 120.0  # 2min vs SDK default 10min
+            http_client = self._unverified_http_client(anthropic)
+            if http_client is not None:
+                kwargs["http_client"] = http_client
             if self._auth_type == "oauth":
                 kwargs["auth_token"] = self.api_key
                 kwargs["default_headers"] = self._oauth_headers()

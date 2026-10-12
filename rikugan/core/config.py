@@ -34,6 +34,9 @@ class ProviderConfig:
     api_base: str = ""
     context_window: int = DEFAULT_CONTEXT_WINDOW
     extra: dict[str, Any] = field(default_factory=dict)
+    # Per provider: off only for endpoints with a self-signed or internal CA
+    # certificate. Never on by default.
+    ssl_verify: bool = True
 
 
 @dataclass
@@ -269,6 +272,7 @@ class RikuganConfig:
             "api_base": self.provider.api_base,
             "context_window": self.provider.context_window,
             "extra": self.provider.extra,
+            "ssl_verify": self.provider.ssl_verify,
         }
 
     def switch_provider(self, new_name: str) -> None:
@@ -287,6 +291,7 @@ class RikuganConfig:
             self.provider.api_base = saved.get("api_base", "")
             self.provider.context_window = saved.get("context_window", DEFAULT_CONTEXT_WINDOW)
             self.provider.extra = saved.get("extra", {})
+            self.provider.ssl_verify = bool(saved.get("ssl_verify", True))
         else:
             # Fresh provider — clear key/base, keep defaults
             self.provider.api_key = ""
@@ -294,6 +299,7 @@ class RikuganConfig:
             self.provider.model = ""
             self.provider.context_window = DEFAULT_CONTEXT_WINDOW
             self.provider.extra = dict(self.custom_providers.get(new_name, {}))
+            self.provider.ssl_verify = True
 
     def add_custom_provider(self, name: str, settings: dict[str, Any] | None = None) -> None:
         """Register a new custom OpenAI-compatible provider name."""

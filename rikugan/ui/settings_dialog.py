@@ -73,7 +73,14 @@ class _ModelFetcher:
             except queue.Empty:
                 break
 
-    def fetch(self, provider_name: str, api_key: str, api_base: str, extra: dict[str, Any] | None = None) -> None:
+    def fetch(
+        self,
+        provider_name: str,
+        api_key: str,
+        api_base: str,
+        extra: dict[str, Any] | None = None,
+        ssl_verify: bool = True,
+    ) -> None:
         # Create the provider and pre-import its SDK on the MAIN thread.
         # Python 3.14 crashes when heavy C-extension packages are first
         # imported from a background thread.
@@ -82,6 +89,7 @@ class _ModelFetcher:
                 provider_name,
                 api_key=api_key,
                 api_base=api_base,
+                ssl_verify=ssl_verify,
                 **(extra or {}),
             )
             provider.ensure_ready()
@@ -401,6 +409,17 @@ class SettingsDialog(QDialog):
         self._api_base_edit.setPlaceholderText("Custom endpoint URL (optional)")
         provider_form.addRow("API Base:", self._api_base_edit)
 
+        # Saved per provider: switching providers restores each one's own choice.
+        self._ignore_ssl_cb = QCheckBox("Ignore SSL certificate errors")
+        self._ignore_ssl_cb.setChecked(not self._config.provider.ssl_verify)
+        self._ignore_ssl_cb.setToolTip(
+            "Skip TLS certificate verification for this provider only.\n"
+            "Use it for internal endpoints with a self-signed or private-CA certificate.\n"
+            "Anyone able to intercept the connection could read your prompts and API key."
+        )
+        self._ignore_ssl_cb.toggled.connect(self._on_ignore_ssl_toggled)
+        provider_form.addRow("", self._ignore_ssl_cb)
+
         provider_form.addRow("Model:", self._build_model_row())
 
         return provider_group
@@ -632,6 +651,9 @@ class SettingsDialog(QDialog):
         # Update UI fields from the (possibly restored) config
         self._api_key_edit.setText(self._config.provider.api_key)
         self._api_base_edit.setText(self._config.provider.api_base)
+        self._ignore_ssl_cb.blockSignals(True)
+        self._ignore_ssl_cb.setChecked(not self._config.provider.ssl_verify)
+        self._ignore_ssl_cb.blockSignals(False)
         self._model_combo.setCurrentText(self._config.provider.model)
         self._model_restore_hint = self._config.provider.model.strip()
 
@@ -655,6 +677,12 @@ class SettingsDialog(QDialog):
         else:
             self._api_key_edit.setPlaceholderText("API key")
 
+        self._update_auth_status()
+        self._fetch_models()
+
+    def _on_ignore_ssl_toggled(self, _checked: bool) -> None:
+        # The provider is rebuilt with the new transport, so re-probe it.
+        self._model_restore_hint = self._get_selected_model_id()
         self._update_auth_status()
         self._fetch_models()
 
@@ -717,6 +745,7 @@ class SettingsDialog(QDialog):
                     provider_name,
                     api_key=explicit_key,
                     api_base=base,
+                    ssl_verify=not self._ignore_ssl_cb.isChecked(),
                     **self._provider_extra_for(provider_name),
                 )
                 label, status_type = provider.auth_status()
@@ -754,7 +783,13 @@ class SettingsDialog(QDialog):
 
         self._model_status.setText("Fetching...")
         self._fetch_btn.setEnabled(False)
-        self._fetcher.fetch(provider, key, base, self._provider_extra_for(provider))
+        self._fetcher.fetch(
+            provider,
+            key,
+            base,
+            self._provider_extra_for(provider),
+            ssl_verify=not self._ignore_ssl_cb.isChecked(),
+        )
 
     def _on_models_ready(self, models: list) -> None:
         self._fetch_btn.setEnabled(True)
@@ -861,6 +896,7 @@ class SettingsDialog(QDialog):
         self._config.provider.model = self._get_selected_model_id()
         self._config.provider.api_key = self._api_key_edit.text().strip()
         self._config.provider.api_base = self._api_base_edit.text().strip()
+        self._config.provider.ssl_verify = not self._ignore_ssl_cb.isChecked()
         if self._config.is_custom_provider(provider_name):
             self._config.provider.extra = dict(self._config.custom_providers.get(provider_name, {}))
             self._config.custom_providers[provider_name] = dict(self._config.provider.extra)
@@ -935,6 +971,7 @@ class SettingsDialog(QDialog):
         # ONLY save what the user explicitly typed — never save auto-resolved OAuth tokens
         self._config.provider.api_key = self._api_key_edit.text().strip()
         self._config.provider.api_base = self._api_base_edit.text().strip()
+        self._config.provider.ssl_verify = not self._ignore_ssl_cb.isChecked()
         self._config.auto_context = self._auto_context_cb.isChecked()
         self._config.checkpoint_auto_save = self._auto_save_cb.isChecked()
         self._config.restore_sessions_on_start = self._restore_sessions_cb.isChecked()
