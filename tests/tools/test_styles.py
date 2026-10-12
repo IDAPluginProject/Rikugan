@@ -185,6 +185,64 @@ class TestChatColorTokens(unittest.TestCase):
             _s.use_native_host_theme = _orig
 
 
+class _FakeWidget:
+    """Stands in for a QWidget: just a top-level window to report."""
+
+    def __init__(self, top=None):
+        self._top = top
+
+    def window(self):
+        return self._top if self._top is not None else self
+
+
+class TestPaletteSource(unittest.TestCase):
+    """In IDA, colors must come from the host's window, not the styled widget.
+
+    Reading the styled widget fed our own stylesheet back into the next pass:
+    the assistant bubble drifted dark and a transparent editor read as black.
+    """
+
+    def _with_native(self, native: bool):
+        import rikugan.ui.styles as _s
+
+        orig = _s.use_native_host_theme
+        _s.use_native_host_theme = lambda: native
+        self.addCleanup(setattr, _s, "use_native_host_theme", orig)
+        return _s
+
+    def test_ida_reads_the_top_level_window(self):
+        styles = self._with_native(True)
+        top = _FakeWidget()
+        self.assertIs(styles._palette_source(_FakeWidget(top)), top)
+
+    def test_ida_unparented_widget_falls_back_to_the_app_palette(self):
+        styles = self._with_native(True)
+        self.assertIsNone(styles._palette_source(_FakeWidget()))
+
+    def test_other_hosts_keep_the_widget(self):
+        styles = self._with_native(False)
+        widget = _FakeWidget(_FakeWidget())
+        self.assertIs(styles._palette_source(widget), widget)
+
+
+class TestInputTextContrast(unittest.TestCase):
+    def test_washed_out_text_is_pushed_readable_on_the_fill(self):
+        tokens = {
+            "chat_canvas": "#f0f0f0",
+            "input_bg": "#e4e4e4",
+            "text": "#d4d4d4",
+            "muted": "#a0a0a0",
+            "accent": "#0078d4",
+            "accent_text": "#ffffff",
+            "border": "#c0c0c0",
+        }
+        css = build_input_area_stylesheet(tokens, flat=True)
+        color = re.search(r"QPlainTextEdit#input_area \{[^}]*?[ ;]color: (#[0-9a-f]{6})", css).group(1)
+        from rikugan.ui.styles import contrast_ratio
+
+        self.assertGreaterEqual(contrast_ratio(color, "#e4e4e4"), 7.0)
+
+
 class TestIdaNativeTheme(unittest.TestCase):
     def test_makes_panel_transparent(self):
         self.assertIn("QWidget#rikugan_panel", IDA_NATIVE_THEME)

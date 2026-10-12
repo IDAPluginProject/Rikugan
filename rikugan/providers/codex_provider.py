@@ -490,7 +490,7 @@ class CodexProvider(LLMProvider):
             headers["Content-Type"] = "application/json"
         req = urllib.request.Request(url, data=data, headers=headers, method=method)
         try:
-            resp = urllib.request.urlopen(req, timeout=120.0)
+            resp = urllib.request.urlopen(req, timeout=120.0, context=self._urlopen_ssl_context())
         except urllib.error.HTTPError as exc:
             if exc.code == 401:
                 self._refresh_auth()
@@ -498,7 +498,7 @@ class CodexProvider(LLMProvider):
                 if payload is not None:
                     headers["Content-Type"] = "application/json"
                 req = urllib.request.Request(url, data=data, headers=headers, method=method)
-                resp = urllib.request.urlopen(req, timeout=120.0)
+                resp = urllib.request.urlopen(req, timeout=120.0, context=self._urlopen_ssl_context())
             else:
                 raise
         if stream:

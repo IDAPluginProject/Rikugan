@@ -141,6 +141,26 @@ def _palette_role(qpalette, role_name: str):
     raise AttributeError(role_name)
 
 
+def _palette_source(source):
+    """Return the widget whose palette describes the host theme.
+
+    In IDA the widget being styled is the wrong place to read from: once our
+    stylesheet sets its ``background``/``color``, Qt writes those back into its
+    palette, so the next restyle derives colors from our own output. The
+    assistant bubble drifted a shade darker on every pass, and a transparent
+    editor read back as black — light text on IDA's light theme. The top-level
+    window carries IDA's own theme and never gets our sheets. When there is no
+    distinct top-level (an unparented widget), the application palette is used.
+    """
+    if source is None or not use_native_host_theme():
+        return source
+    try:
+        top = source.window()
+    except (AttributeError, RuntimeError):
+        return None
+    return None if top is None or top is source else top
+
+
 def get_host_palette_colors(source=None) -> dict[str, str]:
     """Return the current Qt palette colors, with stable fallbacks."""
     try:
@@ -149,6 +169,7 @@ def get_host_palette_colors(source=None) -> dict[str, str]:
         return dict(_FALLBACK_COLORS)
 
     try:
+        source = _palette_source(source)
         palette = None
         if source is not None and hasattr(source, "palette"):
             palette = source.palette()
@@ -164,6 +185,26 @@ def get_host_palette_colors(source=None) -> dict[str, str]:
         return colors
     except Exception:
         return dict(_FALLBACK_COLORS)
+
+
+def host_theme_signature(source=None) -> tuple[str, str]:
+    """Identify the host theme, to tell when it has been switched.
+
+    Read from the top-level window in every host: a signature taken from a
+    widget we style would change whenever our own sheet does. In IDA that is
+    what ``get_host_palette_colors`` already resolves to; handing it the
+    top-level directly would fall through to the application palette, which
+    IDA never changes — a theme switch there swaps only the app stylesheet.
+    """
+    if use_native_host_theme():
+        colors = get_host_palette_colors(source)
+    else:
+        try:
+            top = source.window() if source is not None else None
+        except (AttributeError, RuntimeError):
+            top = None
+        colors = get_host_palette_colors(top)
+    return colors["window"], colors["window_text"]
 
 
 def _use_product_theme(colors: dict[str, str]) -> bool:
@@ -411,10 +452,13 @@ def build_input_area_stylesheet(source=None, flat: bool = False) -> str:
     composer frame, which draws both itself.
     """
     tokens = get_chat_color_tokens(source)
+    # Typed text must stay legible on the fill it is drawn on, whatever the
+    # host palette reports; a washed-out color here makes the composer unusable.
+    text = ensure_contrast(tokens["text"], tokens["input_bg"], 7.0)
     if flat:
         return (
             "QPlainTextEdit#input_area { "
-            f"background: transparent; color: {tokens['text']}; "
+            f"background: transparent; color: {text}; "
             f"border: none; padding: 2px; font-size: {get_host_font_tokens(source)['font_base']}; "
             f"selection-background-color: {tokens['accent']}; "
             f"selection-color: {tokens['accent_text']}; }}"
@@ -422,7 +466,7 @@ def build_input_area_stylesheet(source=None, flat: bool = False) -> str:
         )
     return (
         "QPlainTextEdit#input_area { "
-        f"background-color: {tokens['input_bg']}; color: {tokens['text']}; "
+        f"background-color: {tokens['input_bg']}; color: {text}; "
         f"border: 1px solid {tokens['border']}; border-radius: 8px; "
         f"padding: 8px; font-size: {get_host_font_tokens(source)['font_base']}; "
         f"selection-background-color: {tokens['accent']}; "

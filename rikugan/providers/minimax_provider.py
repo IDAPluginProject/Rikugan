@@ -67,10 +67,11 @@ class MiniMaxProvider(AnthropicProvider):
                 ) from exc
             if not self.api_key:
                 raise AuthenticationError(provider="minimax")
-            self._client = anthropic.Anthropic(
-                api_key=self.api_key,
-                base_url=self.api_base,
-            )
+            kwargs: dict[str, Any] = {"api_key": self.api_key, "base_url": self.api_base}
+            http_client = self._unverified_http_client(anthropic)
+            if http_client is not None:
+                kwargs["http_client"] = http_client
+            self._client = anthropic.Anthropic(**kwargs)
         return self._client
 
     def auth_status(self):

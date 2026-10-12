@@ -59,7 +59,7 @@ class ChatView(QScrollArea):
     def __init__(self, parent: QWidget = None):
         super().__init__(parent)
         self.setObjectName("chat_scroll")
-        self.setStyleSheet(build_chat_view_stylesheet(self))
+        self.refresh_theme()
         self.setWidgetResizable(True)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
@@ -119,6 +119,17 @@ class ChatView(QScrollArea):
         # Plain Python callbacks avoid extra Qt signal traffic in the hot chat path.
         self._tool_approval_callback = None
         self._user_answer_callback = None
+
+    def refresh_theme(self) -> None:
+        """Re-derive the canvas colors and the welcome screen's.
+
+        Message widgets bake their colors in when built; to recolor them the
+        owner replays the conversation with ``restore_from_messages``.
+        """
+        self.setStyleSheet(build_chat_view_stylesheet(self))
+        refresh = getattr(getattr(self, "_welcome", None), "refresh_theme", None)
+        if callable(refresh):
+            refresh()
 
     def set_welcome_widget(self, widget: QWidget | None) -> None:
         """Host a welcome screen above the messages.

@@ -32,7 +32,7 @@ class Composer(QWidget):
     def __init__(self, parent: QWidget = None):
         super().__init__(parent)
         self.setObjectName("composer")
-        self.setStyleSheet(build_composer_stylesheet(self))
+        self.refresh_theme()
         self._send_callback: Callable[[], None] | None = None
         self._cancel_callback: Callable[[], None] | None = None
         self._running = False
@@ -55,6 +55,13 @@ class Composer(QWidget):
         frame_layout.addLayout(self._build_control_row())
 
         outer.addWidget(self._frame)
+
+    def refresh_theme(self) -> None:
+        """Re-derive the frame's and editor's colors from the live host palette."""
+        self.setStyleSheet(build_composer_stylesheet(self))
+        editor = getattr(self, "input_area", None)
+        if editor is not None:
+            editor.refresh_theme()
 
     def _build_control_row(self) -> QHBoxLayout:
         row = QHBoxLayout()

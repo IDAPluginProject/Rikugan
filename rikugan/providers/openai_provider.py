@@ -47,6 +47,9 @@ class OpenAIProvider(LLMProvider):
             kwargs = {"api_key": self.api_key, "timeout": 120.0}
             if self.api_base:
                 kwargs["base_url"] = self.api_base
+            http_client = self._unverified_http_client(openai)
+            if http_client is not None:
+                kwargs["http_client"] = http_client
             self._client = openai.OpenAI(**kwargs)
         return self._client
 

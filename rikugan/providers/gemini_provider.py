@@ -14,7 +14,7 @@ from ..core.errors import (
     ProviderError,
     RateLimitError,
 )
-from ..core.logging import log_debug
+from ..core.logging import log_debug, log_warning
 from ..core.types import (
     Message,
     ModelInfo,
@@ -47,7 +47,21 @@ class GeminiProvider(LLMProvider):
                 ) from exc
             if not self.api_key:
                 raise AuthenticationError(provider="gemini")
-            self._client = genai.Client(api_key=self.api_key)
+            kwargs: dict[str, Any] = {"api_key": self.api_key}
+            if not self.ssl_verify:
+                log_warning("gemini: TLS certificate verification is disabled")
+                try:
+                    kwargs["http_options"] = self._types.HttpOptions(
+                        client_args={"verify": False},
+                        async_client_args={"verify": False},
+                    )
+                except Exception as exc:
+                    raise ProviderError(
+                        "The installed google-genai cannot disable certificate checks. "
+                        "Run: pip install -U google-genai",
+                        provider="gemini",
+                    ) from exc
+            self._client = genai.Client(**kwargs)
         return self._client
 
     @property

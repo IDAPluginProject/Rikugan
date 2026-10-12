@@ -47,6 +47,39 @@ def _muted_text(source=None) -> str:
         return _MUTED_TEXT
 
 
+# Status hues tuned for a dark card; on a light host theme they are walked
+# darker until they read on the card, keeping their identity.
+_TOOL_INK_BASE = {"running": "#dcdcaa", "ok": "#4ec9b0", "error": "#f44747"}
+
+
+def _tool_ink(role: str, source=None) -> str:
+    """Text color for a tool card, resolved against the card's own fill.
+
+    The IDA arm used to hard-code dark-theme greys, so on IDA's light theme a
+    group header was pale grey on pale grey.
+    """
+    try:
+        colors = get_chat_color_tokens(source)
+    except Exception:
+        return _TOOL_INK_BASE.get(role, _MUTED_TEXT)
+    card = colors["tool_bg"]
+    if role == "text":
+        return ensure_contrast(colors["text"], card, 7.0)
+    if role == "muted":
+        return ensure_contrast(colors["muted"], card, 4.5)
+    return ensure_contrast(_TOOL_INK_BASE[role], card, 4.5)
+
+
+def _toggle_css(source=None) -> str:
+    """Expand arrow color: IDA's own tool-button ink is too faint on our cards."""
+    return host_stylesheet(
+        "",
+        "QToolButton#collapse_button { border: none; background: transparent; padding: 0px; "
+        f"color: {_tool_ink('muted', source)}; }}"
+        f"QToolButton#collapse_button:hover {{ color: {_tool_ink('text', source)}; }}",
+    )
+
+
 def _tool_card_css(
     source=None,
     *,
@@ -498,14 +531,13 @@ def _truncate_preview(text: str, max_lines: int = _TOOL_PREVIEW_LINES) -> str:
 
 def _make_preview_label(source=None) -> QLabel:
     """Create a collapsed-state preview QLabel (shared by ToolCallWidget/ToolBatchWidget)."""
-    del source
     lbl = QLabel()
     lbl.setObjectName("tool_content")
     lbl.setWordWrap(True)
     lbl.setStyleSheet(
         host_stylesheet(
             "color: #9a9a9a; font-family: monospace; font-size: 10px; margin-left: 28px;",
-            f"color: {_MUTED_TEXT}; {_native_text_style(size=10, monospace=True)}",
+            f"color: {_tool_ink('muted', source)}; {_native_text_style(size=10, monospace=True)}",
         )
     )
     lbl.setVisible(False)
@@ -633,6 +665,7 @@ class ToolCallWidget(QFrame):
         self._toggle_btn.setObjectName("collapse_button")
         self._toggle_btn.setText("\u25b6")
         self._toggle_btn.setFixedSize(14, 14)
+        self._toggle_btn.setStyleSheet(_toggle_css(self))
         self._toggle_btn.clicked.connect(self._toggle)
         header_layout.addWidget(self._toggle_btn)
 
@@ -668,7 +701,7 @@ class ToolCallWidget(QFrame):
         self._status_label.setStyleSheet(
             host_stylesheet(
                 "color: #dcdcaa; font-size: 10px;",
-                f"color: #dcdcaa; {_native_text_style(size=10, bold=True)}",
+                f"color: {_tool_ink('running', self)}; {_native_text_style(size=10, bold=True)}",
             )
         )
         header_layout.addWidget(self._status_label)
@@ -776,14 +809,14 @@ class ToolCallWidget(QFrame):
             self._result_label.setStyleSheet(
                 host_stylesheet(
                     "color: #f44747; font-family: monospace; font-size: 11px;",
-                    f"color: #f44747; {_native_text_style(size=11, monospace=True)}",
+                    f"color: {_tool_ink('error', self)}; {_native_text_style(size=11, monospace=True)}",
                 )
             )
             self._status_label.setText(_format_result_chip(self._tool_name, result, True))
             self._status_label.setStyleSheet(
                 host_stylesheet(
                     "color: #f44747; font-size: 10px;",
-                    f"color: #f44747; {_native_text_style(size=10, bold=True)}",
+                    f"color: {_tool_ink('error', self)}; {_native_text_style(size=10, bold=True)}",
                 )
             )
             self._bullet.setStyleSheet(
@@ -802,7 +835,7 @@ class ToolCallWidget(QFrame):
             self._status_label.setStyleSheet(
                 host_stylesheet(
                     "color: #4ec9b0; font-size: 10px;",
-                    f"color: #4ec9b0; {_native_text_style(size=10, bold=True)}",
+                    f"color: {_tool_ink('ok', self)}; {_native_text_style(size=10, bold=True)}",
                 )
             )
         self._result_done = True
@@ -815,7 +848,7 @@ class ToolCallWidget(QFrame):
             self._status_label.setStyleSheet(
                 host_stylesheet(
                     "color: #4ec9b0; font-size: 10px;",
-                    f"color: #4ec9b0; {_native_text_style(size=10, bold=True)}",
+                    f"color: {_tool_ink('ok', self)}; {_native_text_style(size=10, bold=True)}",
                 )
             )
 
@@ -870,6 +903,7 @@ class ToolBatchWidget(QFrame):
         self._toggle_btn.setObjectName("collapse_button")
         self._toggle_btn.setText("\u25b6")
         self._toggle_btn.setFixedSize(14, 14)
+        self._toggle_btn.setStyleSheet(_toggle_css(self))
         self._toggle_btn.clicked.connect(self._toggle)
         header_layout.addWidget(self._toggle_btn)
 
@@ -905,7 +939,7 @@ class ToolBatchWidget(QFrame):
         self._status_label.setStyleSheet(
             host_stylesheet(
                 "color: #dcdcaa; font-size: 10px;",
-                f"color: #dcdcaa; {_native_text_style(size=10, bold=True)}",
+                f"color: {_tool_ink('running', self)}; {_native_text_style(size=10, bold=True)}",
             )
         )
         header_layout.addWidget(self._status_label)
@@ -946,7 +980,7 @@ class ToolBatchWidget(QFrame):
         entry.setStyleSheet(
             host_stylesheet(
                 "color: #a8a8a8; font-family: monospace; font-size: 10px;",
-                f"color: {_MUTED_TEXT}; {_native_text_style(size=10, monospace=True)}",
+                f"color: {_tool_ink('muted', self)}; {_native_text_style(size=10, monospace=True)}",
             )
         )
         entry.setWordWrap(True)
@@ -992,7 +1026,7 @@ class ToolBatchWidget(QFrame):
                 self._status_label.setStyleSheet(
                     host_stylesheet(
                         "color: #f44747; font-size: 10px;",
-                        f"color: #f44747; {_native_text_style(size=10, bold=True)}",
+                        f"color: {_tool_ink('error', self)}; {_native_text_style(size=10, bold=True)}",
                     )
                 )
             else:
@@ -1000,7 +1034,7 @@ class ToolBatchWidget(QFrame):
                 self._status_label.setStyleSheet(
                     host_stylesheet(
                         "color: #4ec9b0; font-size: 10px;",
-                        f"color: #4ec9b0; {_native_text_style(size=10, bold=True)}",
+                        f"color: {_tool_ink('ok', self)}; {_native_text_style(size=10, bold=True)}",
                     )
                 )
         else:
@@ -1055,6 +1089,7 @@ class ToolGroupWidget(QFrame):
         self._toggle_btn.setObjectName("collapse_button")
         self._toggle_btn.setText("\u25b6")
         self._toggle_btn.setFixedSize(14, 14)
+        self._toggle_btn.setStyleSheet(_toggle_css(self))
         self._toggle_btn.clicked.connect(self._toggle)
         header_layout.addWidget(self._toggle_btn)
 
@@ -1062,7 +1097,7 @@ class ToolGroupWidget(QFrame):
         self._label.setStyleSheet(
             host_stylesheet(
                 "color: #c8c8c8; font-size: 11px; font-weight: bold;",
-                f"color: #c8c8c8; {_native_text_style(size=11, bold=True)}",
+                f"color: {_tool_ink('text', self)}; {_native_text_style(size=11, bold=True)}",
             )
         )
         header_layout.addWidget(self._label, 1)
@@ -1071,7 +1106,7 @@ class ToolGroupWidget(QFrame):
         self._status_label.setStyleSheet(
             host_stylesheet(
                 "color: #dcdcaa; font-size: 10px;",
-                f"color: #dcdcaa; {_native_text_style(size=10, bold=True)}",
+                f"color: {_tool_ink('running', self)}; {_native_text_style(size=10, bold=True)}",
             )
         )
         header_layout.addWidget(self._status_label)
@@ -1125,7 +1160,7 @@ class ToolGroupWidget(QFrame):
                 self._status_label.setStyleSheet(
                     host_stylesheet(
                         "color: #f44747; font-size: 10px;",
-                        f"color: #f44747; {_native_text_style(size=10, bold=True)}",
+                        f"color: {_tool_ink('error', self)}; {_native_text_style(size=10, bold=True)}",
                     )
                 )
             else:
@@ -1133,7 +1168,7 @@ class ToolGroupWidget(QFrame):
                 self._status_label.setStyleSheet(
                     host_stylesheet(
                         "color: #4ec9b0; font-size: 10px;",
-                        f"color: #4ec9b0; {_native_text_style(size=10, bold=True)}",
+                        f"color: {_tool_ink('ok', self)}; {_native_text_style(size=10, bold=True)}",
                     )
                 )
         else:
@@ -1142,7 +1177,7 @@ class ToolGroupWidget(QFrame):
             self._status_label.setStyleSheet(
                 host_stylesheet(
                     "color: #dcdcaa; font-size: 10px;",
-                    f"color: #dcdcaa; {_native_text_style(size=10, bold=True)}",
+                    f"color: {_tool_ink('running', self)}; {_native_text_style(size=10, bold=True)}",
                 )
             )
 
@@ -1315,7 +1350,7 @@ class ToolApprovalWidget(QFrame):
         self._header.setStyleSheet(
             host_stylesheet(
                 "color: #dcdcaa; font-weight: bold; font-size: 11px;",
-                f"color: #dcdcaa; {_native_text_style(size=11, bold=True)}",
+                f"color: {_tool_ink('running', self)}; {_native_text_style(size=11, bold=True)}",
             )
         )
         layout.addWidget(self._header)
@@ -1327,7 +1362,7 @@ class ToolApprovalWidget(QFrame):
         self._info.setStyleSheet(
             host_stylesheet(
                 "color: #a8a8a8; font-size: 10px;",
-                f"color: {_MUTED_TEXT}; {_native_text_style(size=10)}",
+                f"color: {_tool_ink('muted', self)}; {_native_text_style(size=10)}",
             )
         )
         layout.addWidget(self._info)

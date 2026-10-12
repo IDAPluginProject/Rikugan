@@ -55,7 +55,7 @@ class OllamaProvider(OpenAICompatProvider):
         try:
             base = self.api_base.removesuffix("/v1").rstrip("/")
             url = f"{base}/api/tags"
-            with urllib.request.urlopen(url, timeout=5) as resp:
+            with urllib.request.urlopen(url, timeout=5, context=self._urlopen_ssl_context()) as resp:
                 data = json.loads(resp.read())
             models = []
             for m in data.get("models", []):

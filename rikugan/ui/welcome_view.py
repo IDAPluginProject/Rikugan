@@ -158,7 +158,7 @@ class WelcomeView(QWidget):
     def __init__(self, parent: QWidget = None):
         super().__init__(parent)
         self.setObjectName("welcome_view")
-        self.setStyleSheet(build_welcome_stylesheet(self))
+        self.refresh_theme()
         self._activated_callback: Callable[[str], None] | None = None
         self._summary = BinarySummary()
 
@@ -224,6 +224,10 @@ class WelcomeView(QWidget):
         hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         hint.setWordWrap(True)
         return hint
+
+    def refresh_theme(self) -> None:
+        """Re-derive the welcome screen's colors from the live host palette."""
+        self.setStyleSheet(build_welcome_stylesheet(self))
 
     def set_activated_callback(self, callback: Callable[[str], None] | None) -> None:
         """Set the callback invoked with the prompt text of a clicked row."""

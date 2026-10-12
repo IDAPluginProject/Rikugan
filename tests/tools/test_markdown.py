@@ -218,7 +218,8 @@ class TestMarkdownThemeStyles(unittest.TestCase):
             styles = _theme_markdown_styles()
         self.assertIn("background-color:#e2e2e2", styles["block_code_style"])
         self.assertIn("color:#202020", styles["block_code_style"])
-        self.assertIn("color:#1476a8", styles["link_style"])
+        # The host accent is darkened just enough to read on the bubble.
+        self.assertIn("color:#126a97", styles["link_style"])
 
     def test_dark_theme_code_styles_use_light_text_on_dark_surface(self):
         with patch("rikugan.ui.markdown.get_chat_color_tokens", return_value=_DARK_TOKENS):

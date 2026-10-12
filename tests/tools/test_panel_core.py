@@ -67,6 +67,7 @@ for _mod_name in [
         "get_host_font_tokens",
         "get_host_palette_colors",
         "host_stylesheet",
+        "host_theme_signature",
         "maybe_host_stylesheet",
         "use_native_host_theme",
         "ChatView",
