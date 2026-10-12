@@ -29,6 +29,7 @@ from .qt_compat import (
     QCheckBox,
     QDialog,
     QDialogButtonBox,
+    QEvent,
     QFileDialog,
     QHBoxLayout,
     QLabel,
@@ -58,6 +59,7 @@ from .styles import (
     build_mode_bar_stylesheet,
     build_panel_header_stylesheet,
     build_theme_stylesheet,
+    host_theme_signature,
     maybe_host_stylesheet,
 )
 from .tool_widgets import _SharedSpinnerTimer
@@ -243,6 +245,21 @@ def _export_format_subagent_log(messages) -> str:
                 parts.append(f"> {_export_format_tool_result(tr)}\n")
     parts.append("</details>\n")
     return "\n".join(parts)
+
+
+# A theme switch arrives as a burst of palette and style events across every
+# widget; wait for it to settle before recoloring once.
+_THEME_CHECK_DELAY_MS = 150
+_THEME_POLL_MS = 1000
+_THEME_EVENTS = frozenset(
+    t
+    for t in (
+        getattr(QEvent, "PaletteChange", None),
+        getattr(QEvent, "ApplicationPaletteChange", None),
+        getattr(QEvent, "StyleChange", None),
+    )
+    if t is not None
+)
 
 
 class _AddButtonTabBar(QTabBar):
@@ -528,6 +545,10 @@ class ChatThreadList(QWidget):
         silently drops the other (including the drawer's opaque background).
         """
         self.setStyleSheet(build_chat_sidebar_stylesheet(self) + build_chat_drawer_stylesheet(self))
+        header_css = build_panel_header_stylesheet(self)
+        for button in self.findChildren(QToolButton):
+            if button.objectName() == "header_icon":
+                button.setStyleSheet(header_css)
 
     def _make_icon_button(
         self,
@@ -928,6 +949,11 @@ class RikuganPanelCore(QWidget):
         self._skills_refresh_timer: QTimer | None = None
         self._restore_timer: QTimer | None = None
         self._restore_queue: queue.Queue | None = None
+        # Host theme last painted with; a switch in IDA recolors the panel.
+        self._theme_signature: tuple[str, str] | None = None
+        self._theme_timer: QTimer | None = None
+        # Chats that were busy when the theme changed, recolored once idle.
+        self._theme_stale_tabs: set[str] = set()
 
         self._check_oauth_consent()
 
@@ -939,6 +965,14 @@ class RikuganPanelCore(QWidget):
 
         threading.Thread(target=_warm_oauth, daemon=True).start()
         self._build_ui()
+        self._theme_signature = host_theme_signature(self)
+        # IDA switches themes by swapping the application stylesheet; neither
+        # the app palette nor any event this panel is sure to receive changes,
+        # so the signature is also polled while the panel is on screen.
+        self._theme_poll_timer = QTimer(self)
+        self._theme_poll_timer.setInterval(_THEME_POLL_MS)
+        self._theme_poll_timer.timeout.connect(self._poll_theme)
+        self._theme_poll_timer.start()
 
     def _prompt_decryption_password(self) -> None:
         """Prompt for the encryption password at session start."""
@@ -1609,6 +1643,85 @@ class RikuganPanelCore(QWidget):
         # so settle the layout the first time it is shown as well.
         super().showEvent(event)
         self._apply_responsive_layout()
+        # The host theme may have been switched while the panel was hidden, and
+        # docking it re-parents it under the window that carries the theme.
+        self._schedule_theme_check()
+
+    # --- Host theme switching ---
+
+    def changeEvent(self, event) -> None:
+        super().changeEvent(event)
+        if event.type() in _THEME_EVENTS:
+            self._schedule_theme_check()
+
+    def _schedule_theme_check(self) -> None:
+        """Coalesce the burst of palette/style events a theme switch sends."""
+        # Qt delivers change events from inside the base constructor, before
+        # this panel's own state exists.
+        if getattr(self, "_is_shutdown", True) or not hasattr(self, "_theme_timer"):
+            return
+        if self._theme_timer is None:
+            self._theme_timer = QTimer(self)
+            self._theme_timer.setSingleShot(True)
+            self._theme_timer.setInterval(_THEME_CHECK_DELAY_MS)
+            self._theme_timer.timeout.connect(self._check_theme)
+        self._theme_timer.start()
+
+    def _poll_theme(self) -> None:
+        if self.isVisible():
+            self._check_theme()
+            self._replay_stale_tabs()
+
+    def _check_theme(self) -> None:
+        if self._is_shutdown:
+            return
+        signature = host_theme_signature(self)
+        if signature == self._theme_signature:
+            return
+        self._theme_signature = signature
+        log_debug(f"Host theme changed ({signature[0]}); recoloring panel")
+        self._refresh_theme()
+
+    def _refresh_theme(self) -> None:
+        """Re-apply every stylesheet that bakes in host colors.
+
+        Message widgets resolve their colors when they are built, so idle chats
+        are replayed from their sessions. A chat that is running or waiting on
+        the user keeps its widgets: replaying would drop a live approval prompt
+        or the streaming reply; it is replayed by the poll once it goes idle.
+        """
+        self.setStyleSheet(build_theme_stylesheet(self))
+        mode_bar = getattr(self, "_mode_bar", None)
+        if mode_bar is not None:
+            mode_bar.setStyleSheet(build_mode_bar_stylesheet(mode_bar))
+        for surface in (self._panel_header, self._composer, self._context_bar, self._chat_sidebar):
+            if surface is not None:
+                surface.refresh_theme()
+        if self._scrim is not None:
+            self._scrim.setStyleSheet(build_chat_drawer_stylesheet(self._scrim))
+        for welcome in self._welcome_views.values():
+            welcome.refresh_theme()
+        for chat_view in self._chat_views.values():
+            chat_view.refresh_theme()
+        self._theme_stale_tabs.update(self._chat_views)
+        self._replay_stale_tabs()
+
+    def _replay_stale_tabs(self) -> None:
+        """Rebuild chats still painted in an old theme, once they are idle."""
+        if not self._theme_stale_tabs:
+            return
+        busy = self._awaiting_approval_tabs | self._pending_answer_tabs
+        for tab_id in list(self._theme_stale_tabs):
+            chat_view = self._chat_views.get(tab_id)
+            if chat_view is None:
+                self._theme_stale_tabs.discard(tab_id)
+                continue
+            if tab_id in busy or self._ctrl.is_tab_running(tab_id):
+                continue
+            self._theme_stale_tabs.discard(tab_id)
+            session = self._ctrl.get_session(tab_id)
+            if session is not None and session.messages:
+                chat_view.restore_from_messages(session.messages)
 
     # --- Tab management ---
 
@@ -2032,6 +2145,8 @@ class RikuganPanelCore(QWidget):
             self._stop_skills_refresh_timer()
             self._stop_restore_poll_timer()
             self._stop_binary_poll_timer()
+            if getattr(self, "_theme_poll_timer", None) is not None:
+                self._theme_poll_timer.stop()
             _SharedSpinnerTimer.shutdown()
             if self._context_bar:
                 self._context_bar.stop()

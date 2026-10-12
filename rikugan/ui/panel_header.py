@@ -81,7 +81,7 @@ class PanelHeader(QWidget):
     def __init__(self, parent: QWidget = None):
         super().__init__(parent)
         self.setObjectName("panel_header")
-        self.setStyleSheet(build_panel_header_stylesheet(self))
+        self.refresh_theme()
         self._switcher_callback: Callable[[], None] | None = None
         self._new_callback: Callable[[], None] | None = None
         self._fork_callback: Callable[[], None] | None = None
@@ -135,6 +135,10 @@ class PanelHeader(QWidget):
         button.setFixedSize(26, 26)
         button.clicked.connect(callback)
         return button
+
+    def refresh_theme(self) -> None:
+        """Re-derive the header's colors from the live host palette."""
+        self.setStyleSheet(build_panel_header_stylesheet(self))
 
     def set_callbacks(
         self,

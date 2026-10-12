@@ -248,6 +248,11 @@ class InputArea(QPlainTextEdit):
         finally:
             self._applying_theme = False
 
+    def refresh_theme(self) -> None:
+        """Re-apply the stylesheet even if the cached sheet looks current."""
+        self._theme_css = ""
+        self._apply_theme()
+
     def showEvent(self, event) -> None:
         super().showEvent(event)
         self._apply_theme()

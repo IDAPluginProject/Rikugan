@@ -23,7 +23,7 @@ from __future__ import annotations
 import html
 import re
 
-from .styles import blend_theme_color, get_chat_color_tokens
+from .styles import blend_theme_color, ensure_contrast, get_chat_color_tokens
 
 _MARKDOWN_HINT_RE = re.compile(
     r"(^#{1,6}\s)"  # headings
@@ -68,7 +68,10 @@ def resolve_markdown_theme(source=None) -> dict[str, str]:
 def _theme_markdown_styles(source=None) -> dict[str, str]:
     colors = get_chat_color_tokens(source)
     code_bg = colors["code_bg"]
-    inline_fg = blend_theme_color(colors["accent"], colors["text"], 0.3)
+    # The accent is the host's selection color, which is not chosen to be
+    # read as text on our code fill.
+    inline_fg = ensure_contrast(blend_theme_color(colors["accent"], colors["text"], 0.3), code_bg, 4.5)
+    link = ensure_contrast(colors["accent"], colors.get("assistant_bg", code_bg), 4.5)
     border = colors["border"]
     heading = blend_theme_color(colors["accent"], colors["text"], 0.15)
     muted = colors["muted"]
@@ -83,7 +86,7 @@ def _theme_markdown_styles(source=None) -> dict[str, str]:
             "padding:8px; font-family:monospace; font-size:12px; "
             "white-space:pre-wrap; word-break:break-all;"
         ),
-        "link_style": f"color:{colors['accent']};",
+        "link_style": f"color:{link};",
         "hr_style": f"border:1px solid {border};",
         "heading_style": f"color:{heading}; font-weight:bold;",
         "lang_tag_style": f"color:{colors['muted']};font-size:10px;",

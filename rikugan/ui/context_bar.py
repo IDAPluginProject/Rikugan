@@ -123,7 +123,7 @@ class ContextBar(QFrame):
     def __init__(self, parent: QWidget = None):
         super().__init__(parent)
         self.setObjectName("context_bar")
-        self.setStyleSheet(build_context_bar_stylesheet(self))
+        self.refresh_theme()
         # A fixed height clips descenders and underscores once the host font is
         # larger than the one it was picked for.
         self.setFixedHeight(max(_MIN_BAR_HEIGHT, self.fontMetrics().height() + 8))
@@ -157,6 +157,10 @@ class ContextBar(QFrame):
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._update_cursor)
         self._timer.start(2000)
+
+    def refresh_theme(self) -> None:
+        """Re-derive the bar's colors from the live host palette."""
+        self.setStyleSheet(build_context_bar_stylesheet(self))
 
     def _make_value(self, initial: str) -> QLabel:
         label = QLabel(initial, self)
